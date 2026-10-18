@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Melody Motion</title>
+<meta name="description" content="Turn music into glowing 3D sheet-music animations. Works offline.">
+<meta name="theme-color" content="#070a10">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#070a10; --panel:rgba(14,19,30,.82); --line:rgba(255,255,255,.1); --text:#eef2fa; --muted:#93a0b8;
+  --blue:#4a8fff; --red:#ff4a3d; --yellow:#ffcc14; --green:#33d966;
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+button{font:inherit;color:inherit;cursor:pointer}
+.icon-btn{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(10px);display:grid;place-items:center}
+.icon-btn:hover{border-color:rgba(255,255,255,.3)}
+.icon-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.icon-btn.solid svg{fill:currentColor;stroke:none}
+
+#top{position:fixed;left:0;right:0;top:0;padding:calc(12px + var(--safe-t)) 14px 0;display:flex;gap:10px;align-items:center;pointer-events:none}
+#top>*{pointer-events:auto}
+#top .spacer{flex:1}
+.pill{height:44px;padding:0 16px;border-radius:22px;border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(10px);display:flex;align-items:center;gap:8px;font-weight:600}
+.dots{display:inline-flex;gap:3px}.dots i{width:7px;height:7px;border-radius:50%;display:block}
+.dots i:nth-child(1){background:var(--blue)}.dots i:nth-child(2){background:var(--red)}.dots i:nth-child(3){background:var(--yellow)}.dots i:nth-child(4){background:var(--green)}
+#net{font-size:12px;color:var(--muted);padding:0 4px}
+
+#caption{position:fixed;left:0;right:0;bottom:calc(112px + var(--safe-b));text-align:center;pointer-events:none;
+  font-family:Georgia,"Times New Roman",serif;font-variant:small-caps;letter-spacing:.06em;text-shadow:0 2px 14px #000}
+#caption .t{font-size:clamp(22px,5.2vw,38px);line-height:1.1;transition:opacity .9s}
+#caption .a{font-size:clamp(11px,2.6vw,14px);opacity:.75;margin-top:4px;transition:opacity .9s}
+
+#bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + var(--safe-b));width:min(640px,calc(100% - 24px));
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:26px;border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(14px)}
+#bar .time{font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted);min-width:38px;text-align:center}
+#play{width:48px;height:48px;background:linear-gradient(135deg,var(--blue),var(--green));border:0;color:#04110a}
+input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:28px;background:transparent;min-width:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--blue) var(--p,0%),rgba(255,255,255,.18) var(--p,0%))}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:rgba(255,255,255,.18)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--blue)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;margin-top:-6px;box-shadow:0 0 0 4px rgba(74,143,255,.25)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#fff}
+
+#panel{position:fixed;inset:0;display:none;background:rgba(3,5,9,.6);backdrop-filter:blur(4px);z-index:5}
+#panel.open{display:block}
+#sheet{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100% - 20px));max-height:calc(100% - 28px);overflow:auto;
+  background:#0d121c;border:1px solid var(--line);border-radius:22px;padding:20px}
+#sheet h2{margin:0 0 4px;font-size:20px;display:flex;align-items:center;gap:10px}
+#sheet h3{margin:20px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+#sheet p{margin:6px 0;color:var(--muted);font-size:13.5px}
+.close{position:absolute;right:12px;top:12px;width:36px;height:36px}
+.drop{border:1.5px dashed rgba(255,255,255,.22);border-radius:16px;padding:22px 14px;text-align:center;color:var(--muted);transition:.15s}
+.drop.over{border-color:var(--blue);background:rgba(74,143,255,.08)}
+.drop b{color:var(--text)}
+.btn{border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:12px;padding:10px 14px;font-weight:600}
+.btn:hover{background:rgba(255,255,255,.1)}
+.btn.primary{background:linear-gradient(135deg,var(--blue),#6b6bff);border:0}
+.row{display:flex;gap:8px;align-items:center}
+input[type=text],input[type=url]{flex:1;min-width:0;background:#070b12;border:1px solid var(--line);border-radius:12px;color:var(--text);padding:10px 12px;font:inherit}
+.chip{display:flex;gap:10px;align-items:center;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04)}
+.chip img{width:44px;height:44px;border-radius:8px;object-fit:cover}
+.chip .x{margin-left:auto}
+.song{display:flex;gap:12px;align-items:center;padding:10px;border-radius:14px;border:1px solid transparent}
+.song:hover{background:rgba(255,255,255,.04)}
+.song.cur{border-color:rgba(74,143,255,.5);background:rgba(74,143,255,.08)}
+.song .cv{width:46px;height:46px;border-radius:10px;background:conic-gradient(from 200deg,var(--blue),var(--red),var(--yellow),var(--green),var(--blue));display:grid;place-items:center;flex:none;overflow:hidden;font-size:20px}
+.song .cv img{width:100%;height:100%;object-fit:cover}
+.song .m{flex:1;min-width:0}.song .m b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.song .m span{font-size:12px;color:var(--muted)}
+.song button{background:none;border:0;padding:8px;border-radius:10px;color:var(--muted)}
+.song button:hover{color:var(--text);background:rgba(255,255,255,.08)}
+label.sw{display:flex;align-items:center;gap:10px;margin:6px 0;color:var(--text);font-size:14px}
+.note{font-size:12.5px;color:var(--muted);border-left:3px solid var(--yellow);padding:2px 0 2px 10px;margin:12px 0 0}
+
+#busy{position:fixed;inset:0;z-index:9;background:rgba(3,5,9,.78);backdrop-filter:blur(6px);display:none;place-items:center}
+#busy.open{display:grid}
+#busy .box{width:min(380px,calc(100% - 40px));text-align:center}
+#busy .bar{height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden;margin-top:14px}
+#busy .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--red),var(--yellow),var(--green));transition:width .2s}
+#toast{position:fixed;left:50%;top:calc(70px + var(--safe-t));transform:translateX(-50%);z-index:10;background:#1a2233;border:1px solid var(--line);padding:10px 16px;border-radius:12px;font-size:13.5px;max-width:min(520px,calc(100% - 24px));display:none}
+select{background:#070b12;border:1px solid var(--line);border-radius:10px;color:var(--text);padding:8px 10px;font:inherit;min-width:0}
+.grid2{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:center}
+.grid2 label{color:var(--muted);font-size:13px}
+#top,#bar,#caption{transition:opacity .5s}
+body.idle #top,body.idle #bar{opacity:0;pointer-events:none}
+body.idle{cursor:none}
+body.exporting #top,body.exporting #bar,body.exporting #caption{display:none}
+#xbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + var(--safe-b));z-index:8;display:none;gap:12px;align-items:center;padding:10px 14px;border-radius:22px;border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(12px);font-variant-numeric:tabular-nums}
+body.exporting #xbar{display:flex}
+#xbar i{width:9px;height:9px;border-radius:50%;background:var(--red);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.25}}
+#result{position:fixed;inset:0;z-index:11;background:rgba(3,5,9,.85);backdrop-filter:blur(6px);display:none;place-items:center;overflow:auto;padding:16px}
+#result.open{display:grid}
+#result .box{width:min(420px,100%);text-align:center;display:grid;gap:12px}
+#result video{width:100%;max-height:60vh;border-radius:14px;background:#000}
+@media (prefers-reduced-motion:reduce){#xbar i{animation:none}}
+@media (max-width:480px){#top .pill span.lbl{display:none}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<audio id="audio" preload="auto" playsinline></audio>
+
+<div id="top">
+  <button class="pill" id="openLib" aria-label="Open library"><span class="dots"><i></i><i></i><i></i><i></i></span><span class="lbl">Library</span></button>
+  <span id="net"></span>
+  <span class="spacer"></span>
+  <button class="pill" id="install" style="display:none">Install</button>
+  <button class="icon-btn" id="pip" title="Pop out the animation over other apps" style="display:none" aria-label="Pop out">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor"/></svg>
+  </button>
+  <button class="icon-btn" id="fs" title="Full screen" aria-label="Full screen">
+    <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+  </button>
+</div>
+
+<div id="caption"><div class="t" id="capT"></div><div class="a" id="capA"></div></div>
+
+<div id="bar">
+  <button class="icon-btn" id="prev" aria-label="Previous"><svg class="s" viewBox="0 0 24 24"><path d="M6 5v14M19 5l-9 7 9 7z"/></svg></button>
+  <button class="icon-btn solid" id="play" aria-label="Play"><svg viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z"/></svg></button>
+  <button class="icon-btn" id="next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M18 5v14M5 5l9 7-9 7z"/></svg></button>
+  <span class="time" id="tCur">0:00</span>
+  <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Seek">
+  <span class="time" id="tDur">0:00</span>
+</div>
+
+<div id="panel">
+  <div id="sheet">
+    <button class="icon-btn close" id="closeLib" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <h2><span class="dots"><i></i><i></i><i></i><i></i></span> Melody Motion</h2>
+    <p>Turn music into glowing sheet-music animations. Everything is converted on your device and saved locally, so it plays offline afterwards.</p>
+
+    <h3>Add a song</h3>
+    <div class="drop" id="drop">
+      <div><b>Drop an audio or MIDI file here</b></div>
+      <div style="margin:4px 0 12px">MP3 · M4A · WAV · OGG · FLAC · MIDI</div>
+      <button class="btn primary" id="pick">Choose file</button>
+      <input type="file" id="file" accept="audio/*,.mid,.midi,.mp3,.m4a,.wav,.ogg,.flac,.aac" hidden>
+    </div>
+
+    <div class="grid2" style="margin-top:12px">
+      <label for="detail">Note detail</label>
+      <select id="detail"><option value="melody">Melody only (cleanest for busy songs)</option><option value="balanced">Balanced</option><option value="full">Everything (chords, harmonies)</option></select>
+    </div>
+
+    <h3>Songs from Spotify</h3>
+    <div class="row">
+      <input type="url" id="spUrl" placeholder="Paste a Spotify track link (optional)" inputmode="url">
+      <button class="btn" id="spGo">Use</button>
+    </div>
+    <div id="spChip"></div>
+    <div class="note">Spotify streams are DRM-protected, so no app can pull the audio out of Spotify. Paste the link to borrow the title and cover, then add your own audio or MIDI file of that song (a purchase, a download you own, or a recording you made).</div>
+
+    <h3>Your library</h3>
+    <div id="list"></div>
+    <div class="row" style="margin-top:10px"><button class="btn" id="demo">Add the demo tune</button></div>
+
+    <h3>Make a video</h3>
+    <div class="grid2">
+      <label for="xPreset">Shape</label>
+      <select id="xPreset"><option value="reel">Reel / Story (9:16)</option><option value="square">Square (1:1)</option><option value="wide">Wide (16:9)</option></select>
+      <label for="xLen">Length</label>
+      <select id="xLen"><option value="15">15 seconds</option><option value="30" selected>30 seconds</option><option value="60">60 seconds</option><option value="0">Whole song</option></select>
+    </div>
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="xGo">Record from current position</button></div>
+    <p id="xHelp">Records in real time with the music. Keep this tab open and in front until it finishes.</p>
+
+    <h3>Options</h3>
+    <div class="grid2" style="margin-bottom:8px">
+      <label for="palette">Dot colours</label>
+      <select id="palette"><option value="google">Google (blue, red, yellow, green)</option><option value="hands">By hand (orange upper, green lower)</option><option value="rainbow">Rainbow by pitch</option></select>
+      <label for="speed">Speed</label>
+      <select id="speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select>
+    </div>
+    <label class="sw"><input type="checkbox" id="loop"> Repeat this song</label>
+    <label class="sw"><input type="checkbox" id="guess"> “Can you name this song?” mode (hides the title at first)</label>
+    <label class="sw"><input type="checkbox" id="lowfx"> Lighter effects (for older phones)</label>
+    <p id="storeInfo"></p>
+  </div>
+</div>
+
+<div id="busy"><div class="box"><div id="busyMsg" style="font-weight:600">Working…</div><div class="bar"><i id="busyBar"></i></div><p id="busySub" style="color:var(--muted);font-size:13px"></p></div></div>
+<div id="xbar"><i></i><span id="xTxt">Recording…</span><button class="btn" id="xCancel">Cancel</button></div>
+<div id="result"><div class="box">
+  <b>Your video is ready</b>
+  <video id="rVid" controls playsinline></video>
+  <div class="row" style="justify-content:center;flex-wrap:wrap"><a class="btn primary" id="rDl" download>Download</a><button class="btn" id="rShare" hidden>Share</button><button class="btn" id="rClose">Close</button></div>
+  <p id="rNote" style="color:var(--muted);font-size:13px;margin:0">If Download does nothing in your browser, press and hold the video and choose Save.</p>
+</div></div>
+<div id="toast"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
